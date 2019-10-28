@@ -1,0 +1,14 @@
+{
+    "debug": true,
+    "server": {
+      "address": ":9091"
+    },
+    "database": {
+        "host": "localhost",
+        "port": "5432",
+        "user": "postgres",
+        "pass": "secret",
+        "name": "postgres"
+    }
+  
+  }
