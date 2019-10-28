@@ -6,4 +6,4 @@ WORKDIR /app
 
 COPY . .
 
-CMD ["/app/main"]
+CMD ["/app/main.exe"]
