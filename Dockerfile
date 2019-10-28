@@ -6,4 +6,4 @@ ADD . /app/
 
 WORKDIR /app
 
-CMD ["/app/main"]
+ENTRYPOINT  ["/app/main"]
