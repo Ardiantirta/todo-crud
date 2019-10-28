@@ -6,6 +6,4 @@ ADD . /app/
 
 WORKDIR /app
 
-COPY . .
-
 CMD ["/app/main"]
