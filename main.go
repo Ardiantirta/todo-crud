@@ -8,6 +8,7 @@ import (
 	"github.com/ardiantirta/todo-crud/todo/repository"
 	"github.com/ardiantirta/todo-crud/todo/service"
 	"github.com/gorilla/handlers"
+	"github.com/joho/godotenv"
 	"log"
 	"net/http"
 	"net/url"
@@ -31,14 +32,18 @@ func init() {
 	if viper.GetBool(`debug`) {
 		fmt.Println("Service RUN on DEBUG mode.")
 	}
+
+	if err := godotenv.Load(); err != nil {
+		logrus.Error(err)
+	}
 }
 
 func main() {
-	dbHost := viper.GetString("database.host")
-	dbPort := viper.GetString("database.port")
-	dbUser := viper.GetString("database.user")
-	dbPass := viper.GetString("database.pass")
-	dbName := viper.GetString("database.name")
+	dbHost := os.Getenv("DATABASE_HOST") // viper.GetString("database.host")
+	dbPort := os.Getenv("DATABASE_PORT") // viper.GetString("database.port")
+	dbUser := os.Getenv("DATABASE_USER") // viper.GetString("database.user")
+	dbPass := os.Getenv("DATABASE_PASS") // viper.GetString("database.pass")
+	dbName := os.Getenv("DATABASE_NAME") // viper.GetString("database.name")
 
 	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", dbUser, dbPass, dbHost, dbPort, dbName)
 	val := url.Values{}
@@ -82,7 +87,7 @@ func main() {
 
 	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
 	originsOk := handlers.AllowedOrigins([]string{"*"})
-	methodsOk := handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS", "PATCH"})
+	methodsOk := handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS", "PATCH", "DELETE"})
 
-	log.Fatal(http.ListenAndServe(viper.GetString("server.address"), handlers.CORS(headersOk, originsOk, methodsOk)(r)))
+	log.Fatal(http.ListenAndServe(os.Getenv("SERVER_ADDRESS"), handlers.CORS(headersOk, originsOk, methodsOk)(r)))
 }

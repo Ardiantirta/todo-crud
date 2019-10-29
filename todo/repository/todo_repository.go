@@ -12,7 +12,7 @@ type TodoRepository struct {
 
 func (t TodoRepository) Fetch(page int, limit int) (response []*models.Todo, count int, err error) {
 	query := `Select id, title, description, completed, created_at, updated_at 
-				from todo order by id limit $1 offset $2`
+				from todo order by id desc limit $1 offset $2`
 
 	queryCount := `Select count(id)
 					from todo`
@@ -79,9 +79,9 @@ func (t TodoRepository) GetById(id int64) (*models.Todo, error) {
 
 func (t TodoRepository) Create(req models.Todo) error {
 	query := `insert into todo(title, description, completed, created_at, updated_at)
-	values ($1, $2, $3, now(), now())`
+	values ($1, $2, false, now(), now())`
 
-	_, err := t.Conn.Exec(query, req.Title, req.Description, req.Completed)
+	_, err := t.Conn.Exec(query, req.Title, req.Description)
 	if err != nil {
 		logrus.Error(err)
 		return err
