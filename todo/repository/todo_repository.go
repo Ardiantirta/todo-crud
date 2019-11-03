@@ -2,8 +2,11 @@ package repository
 
 import (
 	"database/sql"
+	"fmt"
 	"github.com/ardiantirta/todo-crud/models"
 	"github.com/sirupsen/logrus"
+	"sync"
+	"time"
 )
 
 type TodoRepository struct {
@@ -17,16 +20,22 @@ func (t TodoRepository) Fetch(page int, limit int) (response []*models.Todo, cou
 	queryCount := `Select count(id)
 					from todo`
 
+	start := time.Now()
 	err = t.Conn.QueryRow(queryCount).Scan(&count)
 	if err != nil {
 		logrus.Error(err)
 	}
+	elapsed := time.Since(start)
+	fmt.Printf("select count took %s\n", elapsed)
 
+	start = time.Now()
 	rows, err := t.Conn.Query(query, limit, (page-1)*limit)
 	if err != nil {
 		logrus.Error(err)
 		return nil, 0, err
 	}
+	elapsed = time.Since(start)
+	fmt.Printf("select query took %s\n", elapsed)
 
 	defer func() {
 		err = rows.Close()
@@ -35,6 +44,7 @@ func (t TodoRepository) Fetch(page int, limit int) (response []*models.Todo, cou
 		}
 	}()
 
+	start = time.Now()
 	for rows.Next() {
 		temp := new(models.Todo)
 		err = rows.Scan(
@@ -53,8 +63,107 @@ func (t TodoRepository) Fetch(page int, limit int) (response []*models.Todo, cou
 
 		response = append(response, temp)
 	}
+	elapsed = time.Since(start)
+	fmt.Printf("forloop insert to response took %s\n", elapsed)
 
+	fmt.Println("count fetch", len(response))
 	return response, count, nil
+}
+
+func (t TodoRepository) fetch(ch chan<- *models.Todo, wg *sync.WaitGroup, query string, page int, limit int, channel int) {
+	defer wg.Done()
+	rows, err := t.Conn.Query(query, limit/channel, (page-1)*limit)
+	if err != nil {
+		logrus.Error(err)
+	}
+	for rows.Next() {
+		temp := new(models.Todo)
+		_ = rows.Scan(
+			&temp.ID,
+			&temp.Title,
+			&temp.Description,
+			&temp.Completed,
+			&temp.CreatedAt,
+			&temp.UpdatedAt,
+		)
+		ch <- temp
+		fmt.Println("write to channel")
+	}
+
+}
+
+func (t TodoRepository) FetchWChannel(page int, limit int, channel int) (response []*models.Todo, count int, err error) {
+	query := `Select id, title, description, completed, created_at, updated_at
+				from todo order by id desc limit $1 offset $2`
+
+	queryCount := `select count(id) from todo`
+
+	start := time.Now()
+	err = t.Conn.QueryRow(queryCount).Scan(&count)
+	if err != nil {
+		logrus.Error(err)
+	}
+	elapsed := time.Since(start)
+	fmt.Printf("select count took %s\n", elapsed)
+
+	ch := make(chan *models.Todo)
+	var wg sync.WaitGroup
+
+	start = time.Now()
+	rows, err := t.Conn.Query(query, limit, (page-1)*limit)
+	if err != nil {
+		logrus.Error(err)
+		return response, count, err
+	}
+	elapsed = time.Since(start)
+	fmt.Printf("select rows took %s\n", elapsed)
+
+	defer func() {
+		err = rows.Close()
+		if err != nil {
+			logrus.Error(err)
+		}
+	}()
+
+	//for i := 1; i <= channel; i++ {
+	wg.Add(1)
+	go func() {
+		fmt.Println("start goroutine")
+		start = time.Now()
+		defer wg.Done()
+		for rows.Next() {
+			temp := new(models.Todo)
+			_ = rows.Scan(
+				&temp.ID,
+				&temp.Title,
+				&temp.Description,
+				&temp.Completed,
+				&temp.CreatedAt,
+				&temp.UpdatedAt,
+			)
+			ch <- temp
+		}
+		elapsed = time.Since(start)
+		//fmt.Printf("scan each row took %s\n", elapsed)
+	}()
+
+	//}
+
+	go func() {
+		defer close(ch)
+		wg.Wait()
+		fmt.Println("stop goroutine")
+	}()
+
+	start = time.Now()
+	for item := range ch {
+		response = append(response, item)
+	}
+	elapsed = time.Since(start)
+	fmt.Printf("forloop rows to response took %s\n", elapsed)
+
+	fmt.Printf("count fetch %d\n", len(response))
+	return response, count, err
 }
 
 func (t TodoRepository) GetById(id int64) (*models.Todo, error) {

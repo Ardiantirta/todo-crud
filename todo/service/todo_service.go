@@ -28,6 +28,28 @@ func (t *TodoService) Fetch(page int, limit int) (response []*models.Todo, count
 	return listTodo, count, nil
 }
 
+func (t *TodoService) FetchWChannel(page int, limit int, channel int) (response []*models.Todo, count int, err error) {
+	if page == 0 {
+		page = 1
+	}
+
+	if limit == 0 {
+		limit = 100
+	}
+
+	if channel == 0 {
+		channel = 1
+	}
+
+	listTodo, count, err := t.todoRepo.FetchWChannel(page, limit, channel)
+	if err != nil {
+		logrus.Error(err)
+		return nil, count, err
+	}
+
+	return listTodo, count, err
+}
+
 func (t *TodoService) GetById(id int64) (res *models.Todo, err error) {
 	res, err = t.todoRepo.GetById(id)
 	if err != nil {
