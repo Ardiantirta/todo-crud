@@ -109,58 +109,47 @@ func (t TodoRepository) FetchWChannel(page int, limit int, channel int) (respons
 	ch := make(chan *models.Todo)
 	var wg sync.WaitGroup
 
-	start = time.Now()
-	rows, err := t.Conn.Query(query, limit, (page-1)*limit)
-	if err != nil {
-		logrus.Error(err)
-		return response, count, err
+	wg.Add(channel)
+	var i int
+	for i = 1; i <= channel; i++ {
+		go func(index int) {
+			rows, err := t.Conn.Query(query, limit/channel, (index-1)*(limit/channel))
+			if err != nil {
+				logrus.Error(err)
+			}
+
+			defer func() {
+				err = rows.Close()
+				if err != nil {
+					logrus.Error(err)
+				}
+			}()
+
+			for rows.Next() {
+				temp := new(models.Todo)
+				_ = rows.Scan(
+					&temp.ID,
+					&temp.Title,
+					&temp.Description,
+					&temp.Completed,
+					&temp.CreatedAt,
+					&temp.UpdatedAt,
+				)
+				ch <- temp
+			}
+
+			wg.Done()
+		}(i)
 	}
-	elapsed = time.Since(start)
-	fmt.Printf("select rows took %s\n", elapsed)
-
-	defer func() {
-		err = rows.Close()
-		if err != nil {
-			logrus.Error(err)
-		}
-	}()
-
-	//for i := 1; i <= channel; i++ {
-	wg.Add(1)
-	go func() {
-		fmt.Println("start goroutine")
-		start = time.Now()
-		defer wg.Done()
-		for rows.Next() {
-			temp := new(models.Todo)
-			_ = rows.Scan(
-				&temp.ID,
-				&temp.Title,
-				&temp.Description,
-				&temp.Completed,
-				&temp.CreatedAt,
-				&temp.UpdatedAt,
-			)
-			ch <- temp
-		}
-		elapsed = time.Since(start)
-		//fmt.Printf("scan each row took %s\n", elapsed)
-	}()
-
-	//}
 
 	go func() {
 		defer close(ch)
 		wg.Wait()
-		fmt.Println("stop goroutine")
 	}()
 
-	start = time.Now()
 	for item := range ch {
 		response = append(response, item)
 	}
-	elapsed = time.Since(start)
-	fmt.Printf("forloop rows to response took %s\n", elapsed)
 
 	fmt.Printf("count fetch %d\n", len(response))
 	return response, count, err
