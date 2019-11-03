@@ -69,6 +69,15 @@ func (t *TodoService) Create(req models.Todo) error {
 	return nil
 }
 
+func (t *TodoService) CreateBulk(req models.Todo, bulkCount int) error {
+	err := t.todoRepo.CreateBulk(req, bulkCount)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	return nil
+}
+
 func (t *TodoService) Update(id int64, req models.Todo) error {
 	err := t.todoRepo.Update(id, req)
 	if err != nil {

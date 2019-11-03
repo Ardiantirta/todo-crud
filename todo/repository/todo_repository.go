@@ -13,7 +13,7 @@ type TodoRepository struct {
 	Conn *sql.DB
 }
 
-func (t TodoRepository) Fetch(page int, limit int) (response []*models.Todo, count int, err error) {
+func (t *TodoRepository) Fetch(page int, limit int) (response []*models.Todo, count int, err error) {
 	query := `Select id, title, description, completed, created_at, updated_at 
 				from todo order by id desc limit $1 offset $2`
 
@@ -70,29 +70,7 @@ func (t TodoRepository) Fetch(page int, limit int) (response []*models.Todo, cou
 	return response, count, nil
 }
 
-func (t TodoRepository) fetch(ch chan<- *models.Todo, wg *sync.WaitGroup, query string, page int, limit int, channel int) {
-	defer wg.Done()
-	rows, err := t.Conn.Query(query, limit/channel, (page-1)*limit)
-	if err != nil {
-		logrus.Error(err)
-	}
-	for rows.Next() {
-		temp := new(models.Todo)
-		_ = rows.Scan(
-			&temp.ID,
-			&temp.Title,
-			&temp.Description,
-			&temp.Completed,
-			&temp.CreatedAt,
-			&temp.UpdatedAt,
-		)
-		ch <- temp
-		fmt.Println("write to channel")
-	}
-
-}
-
-func (t TodoRepository) FetchWChannel(page int, limit int, channel int) (response []*models.Todo, count int, err error) {
+func (t *TodoRepository) FetchWChannel(page int, limit int, channel int) (response []*models.Todo, count int, err error) {
 	query := `Select id, title, description, completed, created_at, updated_at
 				from todo order by id desc limit $1 offset $2`
 
@@ -113,6 +91,7 @@ func (t TodoRepository) FetchWChannel(page int, limit int, channel int) (respons
 	var i int
 	for i = 1; i <= channel; i++ {
 		go func(index int) {
+			fmt.Println("Start goroutine", index)
 			rows, err := t.Conn.Query(query, limit/channel, (index-1)*(limit/channel))
 			if err != nil {
 				logrus.Error(err)
@@ -137,7 +116,7 @@ func (t TodoRepository) FetchWChannel(page int, limit int, channel int) (respons
 				)
 				ch <- temp
 			}
-
+			fmt.Println("finish goroutine", index)
 			wg.Done()
 		}(i)
 	}
@@ -147,15 +126,18 @@ func (t TodoRepository) FetchWChannel(page int, limit int, channel int) (respons
 		wg.Wait()
 	}()
 
+	start = time.Now()
 	for item := range ch {
 		response = append(response, item)
 	}
+	elapsed = time.Since(start)
+	fmt.Printf("Fetch data from buffered channel took %s\n", elapsed)
 
 	fmt.Printf("count fetch %d\n", len(response))
 	return response, count, err
 }
 
-func (t TodoRepository) GetById(id int64) (*models.Todo, error) {
+func (t *TodoRepository) GetById(id int64) (*models.Todo, error) {
 	query := `Select id, title, description, completed, created_at, updated_at
 				from todo where id = $1`
 
@@ -175,11 +157,11 @@ func (t TodoRepository) GetById(id int64) (*models.Todo, error) {
 	return res, err
 }
 
-func (t TodoRepository) Create(req models.Todo) error {
+func (t *TodoRepository) Create(req models.Todo) error {
 	query := `insert into todo(title, description, completed, created_at, updated_at)
-	values ($1, $2, false, now(), now())`
+				values ($1, $2, $3, $4, $5)`
 
-	_, err := t.Conn.Exec(query, req.Title, req.Description)
+	_, err := t.Conn.Exec(query, req.Title, req.Description, false, time.Now(), time.Now())
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -188,7 +170,22 @@ func (t TodoRepository) Create(req models.Todo) error {
 	return nil
 }
 
-func (t TodoRepository) Update(id int64, req models.Todo) error {
+func (t *TodoRepository) CreateBulk(req models.Todo, bulkCount int) error {
+	query := `insert into todo(title, description, completed, created_at, updated_at)
+				values($1, $2, $3, $4, $5)`
+
+	for i := 0; i < bulkCount; i++ {
+		_, err := t.Conn.Exec(query, req.Title, req.Description, false, time.Now(), time.Now())
+		if err != nil {
+			logrus.Error(err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (t *TodoRepository) Update(id int64, req models.Todo) error {
 	query := `select id, title, description, completed, created_at, updated_at
 				from todo
 				where id = $1`
@@ -211,7 +208,7 @@ func (t TodoRepository) Update(id int64, req models.Todo) error {
                 	title = $2,
                 	description = $3,
                 	completed = $4,
-                	updated_at = now()
+                	updated_at = $5
 				where id = $1`
 
 	if req.Title == "" {
@@ -222,7 +219,7 @@ func (t TodoRepository) Update(id int64, req models.Todo) error {
 		req.Description = todo.Description
 	}
 
-	_, err = t.Conn.Exec(query, id, req.Title, req.Description, req.Completed)
+	_, err = t.Conn.Exec(query, id, req.Title, req.Description, req.Completed, time.Now())
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -231,7 +228,7 @@ func (t TodoRepository) Update(id int64, req models.Todo) error {
 	return nil
 }
 
-func (t TodoRepository) Delete(id int64) error {
+func (t *TodoRepository) Delete(id int64) error {
 	query := `delete from todo
 				where id = $1`
 

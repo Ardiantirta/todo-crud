@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/ardiantirta/todo-crud/models"
 	"github.com/ardiantirta/todo-crud/todo/service"
 	"github.com/gorilla/handlers"
@@ -24,14 +25,14 @@ func NewTodoHandler(r *mux.Router, ts service.Service) {
 
 	r.Handle("/todos", handlers.LoggingHandler(os.Stdout, http.HandlerFunc(handler.FetchTodo))).Methods(http.MethodGet)
 	r.Handle("/todoschannel", handlers.LoggingHandler(os.Stdout, http.HandlerFunc(handler.FetchWChannel))).Methods(http.MethodGet)
-	//r.HandleFunc("/todos", handler.FetchTodo).Methods(http.MethodGet)
-	r.HandleFunc("/todo/{id}", handler.GetTodoById).Methods(http.MethodGet)
-	r.HandleFunc("/todo", handler.CreateTodo).Methods(http.MethodPost)
-	r.HandleFunc("/todo/{id}", handler.UpdateTodo).Methods(http.MethodPut)
-	r.HandleFunc("/todo/{id}", handler.DeleteTodo).Methods(http.MethodDelete)
+	r.Handle("/todo/{id}", handlers.LoggingHandler(os.Stdout, http.HandlerFunc(handler.GetTodoById))).Methods(http.MethodGet)
+	r.Handle("/todo", handlers.LoggingHandler(os.Stdout, http.HandlerFunc(handler.CreateTodo))).Methods(http.MethodPost)
+	r.Handle("/todobulk", handlers.LoggingHandler(os.Stdout, http.HandlerFunc(handler.CreateBulkTodo))).Methods(http.MethodPost)
+	r.Handle("/todo/{id}", handlers.LoggingHandler(os.Stdout, http.HandlerFunc(handler.UpdateTodo))).Methods(http.MethodPut)
+	r.Handle("/todo/{id}", handlers.LoggingHandler(os.Stdout, http.HandlerFunc(handler.DeleteTodo))).Methods(http.MethodDelete)
 }
 
-func (s TodoHandler) FetchTodo(w http.ResponseWriter, r *http.Request) {
+func (s *TodoHandler) FetchTodo(w http.ResponseWriter, r *http.Request) {
 	qsPage := r.URL.Query()["page"][0]
 	page, err := strconv.Atoi(qsPage)
 	if err != nil {
@@ -68,7 +69,7 @@ func (s TodoHandler) FetchTodo(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s TodoHandler) FetchWChannel(w http.ResponseWriter, r *http.Request) {
+func (s *TodoHandler) FetchWChannel(w http.ResponseWriter, r *http.Request) {
 	qsPage := r.URL.Query()["page"][0]
 	qsLimit := r.URL.Query()["limit"][0]
 	qsChannel := r.URL.Query()["channel"][0]
@@ -111,7 +112,7 @@ func (s TodoHandler) FetchWChannel(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (s TodoHandler) GetTodoById(w http.ResponseWriter, r *http.Request) {
+func (s *TodoHandler) GetTodoById(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
@@ -136,7 +137,7 @@ func (s TodoHandler) GetTodoById(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s TodoHandler) CreateTodo(w http.ResponseWriter, r *http.Request) {
+func (s *TodoHandler) CreateTodo(w http.ResponseWriter, r *http.Request) {
 	var todo models.Todo
 
 	err := json.NewDecoder(r.Body).Decode(&todo)
@@ -158,7 +159,47 @@ func (s TodoHandler) CreateTodo(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s TodoHandler) UpdateTodo(w http.ResponseWriter, r *http.Request) {
+func (s *TodoHandler) CreateBulkTodo(w http.ResponseWriter, r *http.Request) {
+	body := make(map[string]interface{})
+
+	err := json.NewDecoder(r.Body).Decode(&body)
+	if err != nil {
+		logrus.Error(err)
+	}
+
+	bTodo, err := json.Marshal(body["todo"])
+	if err != nil {
+		logrus.Error(err)
+	}
+
+	var todo models.Todo
+	err = json.Unmarshal(bTodo, &todo)
+	if err != nil {
+		logrus.Error(err)
+	}
+
+	countBulk := int(body["countBulk"].(float64))
+
+	err = s.TodoService.CreateBulk(todo, countBulk)
+	if err != nil {
+		logrus.Error(err)
+		respondWithError(w, http.StatusBadRequest, err.Error())
+	}
+
+	data := make(map[string]interface{})
+	data["todo"] = todo
+	data["countBulk"] = countBulk
+
+	message := fmt.Sprintf("insert %d data success", data["countBulk"])
+
+	respondWithJSON(w, http.StatusOK, models.ResponseHttp{
+		Data:    nil,
+		Code:    strconv.Itoa(http.StatusOK),
+		Message: message,
+	})
+}
+
+func (s *TodoHandler) UpdateTodo(w http.ResponseWriter, r *http.Request) {
 	var todo models.Todo
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
@@ -186,7 +227,7 @@ func (s TodoHandler) UpdateTodo(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s TodoHandler) DeleteTodo(w http.ResponseWriter, r *http.Request) {
+func (s *TodoHandler) DeleteTodo(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
