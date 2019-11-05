@@ -84,12 +84,12 @@ func (t *TodoRepository) FetchWChannel(page int, limit int, channel int) (respon
 	elapsed := time.Since(start)
 	fmt.Printf("select count took %s\n", elapsed)
 
-	ch := make(chan *models.Todo)
+	ch := make(chan *models.Todo, channel)
 	var wg sync.WaitGroup
 
-	wg.Add(channel)
 	var i int
 	for i = 1; i <= channel; i++ {
+		wg.Add(1)
 		go func(index int) {
 			fmt.Println("Start goroutine", index)
 			rows, err := t.Conn.Query(query, limit/channel, (index-1)*(limit/channel))
